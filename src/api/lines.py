@@ -117,7 +117,7 @@ def get_conversation(id: int):
             "conversation_id": id,
             "movie_id": c.movie_id,
             "movie_title": movie.title,
-            "conversation": (
+            "conversation": ( 
                 {"character_id": i.c_id,
                 "character": db.characters.get(i.c_id).name,
                 "line": i.line_text} 

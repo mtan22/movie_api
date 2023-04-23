@@ -5,4 +5,3 @@ from src.api.server import app
 import json
 
 client = TestClient(app)
-

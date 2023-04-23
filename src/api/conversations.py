@@ -44,21 +44,21 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     char2 = db.characters[convo_char_2]
     convo_index = 1+int(db.conversations[len(db.conversations)-1]["conversation_id"]) # getting next conversation id
 
-    # for i in conversation.lines:
-    #     if (conversation.character_1_id != i.character_id) and (conversation.character_2_id != i.character_id):
-    #         raise HTTPException(status_code=404, detail="lines don't match the characters involved in the conversation.")
+    for i in conversation.lines:
+        if (conversation.character_1_id != i.character_id) and (conversation.character_2_id != i.character_id):
+            raise HTTPException(status_code=404, detail="lines don't match the characters involved in the conversation.")
 
-    # if char1.movie_id == char2.movie_id:
-    #     raise HTTPException(status_code=404, detail="characters are the same.")
+    if char1.movie_id == char2.movie_id:
+        raise HTTPException(status_code=404, detail="characters are the same.")
 
-    # if db.movies[movie_id] not in db.movies:
-    #     raise HTTPException(status_code=404, details="movie is not found.")
+    if db.movies[movie_id] not in db.movies:
+        raise HTTPException(status_code=404, details="movie is not found.")
 
-    # if char1 not in db.characters or char2 not in db.characters:
-    #     raise HTTPException(status_code=404, details="character is not found.")
+    if char1 not in db.characters or char2 not in db.characters:
+        raise HTTPException(status_code=404, details="character is not found.")
     
-    # if movie_id != char1[movie_id] or movie_id != char2[movie_id]:
-    #     raise HTTPException(status_code=404, details="characters are not part of the referenced movie.")
+    if movie_id != char1[movie_id] or movie_id != char2[movie_id]:
+        raise HTTPException(status_code=404, details="characters are not part of the referenced movie.")
 
     # last_index = len(db.conversations)-1
 

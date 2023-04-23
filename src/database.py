@@ -46,13 +46,13 @@ lines_csv = (
     .decode("utf-8")
 )
 
-conversations=[]
+convo_list=[]
 logs = []
 movies = []
 lines=[]
 
 for i in csv.DictReader(io.StringIO(conversations_csv), skipinitialspace=True):
-    conversations.append(i)
+    convo_list.append(i)
 
 def upload_new_convo():
     output = io.StringIO()
@@ -60,7 +60,7 @@ def upload_new_convo():
         output, fieldnames=["conversation_id", "character1_id", "character2_id", "movie_id"]
     )
     csv_writer.writeheader()
-    csv_writer.writerows(conversations)
+    csv_writer.writerows(convo_list)
     supabase.storage.from_("movie-api").upload(
         "conversations.csv",
         bytes(output.getvalue(), "utf-8"),

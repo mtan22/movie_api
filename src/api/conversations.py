@@ -70,19 +70,19 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     })
     db.upload_new_convo()
 
-    # # add lines
-    # for i in conversation.lines:
-    #     char_id = i.character_id
-    #     line_text = i.line_text
-    #     db.lines.append({"line_id": 1+int(db.lines[len(db.lines)-1]["line_id"]), # getting next line id
-    #         "character_id": char_id,
-    #         "movie_id": movie_id,
-    #         "conversation_id":convo_index,
-    #         "line_sort": line_sort,
-    #         "line_text": line_text
+    # add lines
+    for i in conversation.lines:
+        char_id = i.character_id
+        line_text = i.line_text
+        db.lines.append({"line_id": 1+int(db.lines[len(db.lines)-1]["line_id"]), # getting next line id
+            "character_id": char_id,
+            "movie_id": movie_id,
+            "conversation_id":convo_index,
+            "line_sort": line_sort,
+            "line_text": line_text
 
-    #     })
-    #     line_sort=line_sort+1
-    # db.upload_new_lines()
+        })
+        line_sort=line_sort+1
+    db.upload_new_lines()
 
     # return convo_index

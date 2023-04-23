@@ -42,7 +42,6 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     convo_char_2 = conversation.character_2_id
     char1 = db.characters[convo_char_1]
     char2 = db.characters[convo_char_2]
-    convo_index = 1+int(db.conversations[len(db.conversations)-1]["conversation_id"]) # getting next conversation id
 
     for i in conversation.lines:
         if (conversation.character_1_id != i.character_id) and (conversation.character_2_id != i.character_id):
@@ -59,11 +58,10 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     
     if movie_id != char1[movie_id] or movie_id != char2[movie_id]:
         raise HTTPException(status_code=404, details="characters are not part of the referenced movie.")
-
-    last_index = len(db.conversations)-1
+    convo_index = 1+int(db.conversations[len(db.conversations)-1]["conversation_id"]) # getting next conversation id
 
     # add convo first so the convo id exists when conversation.lines is traversed through
-    db.conversations.append({"conversation_id": int(db.conversations[last_index]["conversation_id"]),
+    db.conversations.append({"conversation_id": convo_index,
     "character1_id": convo_char_1,
     "character2_id": convo_char_2,
     "movie_id": movie_id
@@ -80,7 +78,6 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
             "conversation_id":convo_index,
             "line_sort": line_sort,
             "line_text": line_text
-
         })
         line_sort=line_sort+1
     db.upload_new_lines()

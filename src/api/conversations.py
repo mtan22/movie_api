@@ -85,4 +85,4 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
         line_sort=line_sort+1
     db.upload_new_lines()
 
-    # return convo_index
+    return convo_index

@@ -30,42 +30,8 @@ log_csv = (
     .download("movie_conversations_log.csv")
     .decode("utf-8")
 )
-conversations_csv = (
-    supabase.storage.from_("movie-api")
-    .download("conversations.csv")
-    .decode("utf-8")
-)
-movies_csv = (
-    supabase.storage.from_("movie-api")
-    .download("movies.csv")
-    .decode("utf-8")
-)
-lines_csv = (
-    supabase.storage.from_("movie-api")
-    .download("lines.csv")
-    .decode("utf-8")
-)
 
-convo_list=[]
 logs = []
-movies = []
-lines=[]
-
-for i in csv.DictReader(io.StringIO(conversations_csv), skipinitialspace=True):
-    convo_list.append(i)
-
-def upload_new_convo():
-    output = io.StringIO()
-    csv_writer = csv.DictWriter(
-        output, fieldnames=["conversation_id", "character1_id", "character2_id", "movie_id"]
-    )
-    csv_writer.writeheader()
-    csv_writer.writerows(convo_list)
-    supabase.storage.from_("movie-api").upload(
-        "conversations.csv",
-        bytes(output.getvalue(), "utf-8"),
-        {"x-upsert": "true"},
-    )
 
 
 for i in csv.DictReader(io.StringIO(log_csv), skipinitialspace=True):
@@ -84,8 +50,41 @@ def upload_new_log():
         {"x-upsert": "true"},
     )
 
+
+conversations_csv = (
+    supabase.storage.from_("movie-api")
+    .download("conversations.csv")
+    .decode("utf-8")
+)
+
+convo_list=[]
+
+for i in csv.DictReader(io.StringIO(conversations_csv), skipinitialspace=True):
+    convo_list.append(i)
+
+def upload_new_convo():
+    output = io.StringIO()
+    csv_writer = csv.DictWriter(
+        output, fieldnames=["conversation_id", "character1_id", "character2_id", "movie_id"]
+    )
+    csv_writer.writeheader()
+    csv_writer.writerows(convo_list)
+    supabase.storage.from_("movie-api").upload(
+        "conversations.csv",
+        bytes(output.getvalue(), "utf-8"),
+        {"x-upsert": "true"},
+    )
+
+
+movies_csv = (
+    supabase.storage.from_("movie-api")
+    .download("movies.csv")
+    .decode("utf-8")
+)
+movies_list = []
+
 for i in csv.DictReader(io.StringIO(movies_csv), skipinitialspace=True):
-    movies.append(i)
+    movies_list.append(i)
 
 def upload_new_movie():
     output = io.StringIO()
@@ -94,15 +93,25 @@ def upload_new_movie():
         "imdb_votes", "raw_script_url"]
     )
     csv_writer.writeheader()
-    csv_writer.writerows(movies)
+    csv_writer.writerows(movies_list)
     supabase.storage.from_("movie-api").upload(
         "movies.csv",
         bytes(output.getvalue(), "utf-8"),
         {"x-upsert": "true"},
     )
 
+
+lines_csv = (
+    supabase.storage.from_("movie-api")
+    .download("lines.csv")
+    .decode("utf-8")
+)
+
+
+lines_list=[]
+
 for i in csv.DictReader(io.StringIO(lines_csv), skipinitialspace=True):
-    lines.append(i)
+    lines_list.append(i)
 
 def try_parse(type, val):
     try:
@@ -110,7 +119,7 @@ def try_parse(type, val):
     except ValueError:
         return None
 
-for i in lines:
+for i in lines_list:
     line = Line(
         try_parse(int, i["line_id"]),
         try_parse(int, i["character_id"]),
@@ -127,7 +136,7 @@ def upload_new_lines():
         "conversation_id", "line_sort", "line_text"]
     )
     csv_writer.writeheader()
-    csv_writer.writerows(lines)
+    csv_writer.writerows(lines_list)
     supabase.storage.from_("movie-api").upload(
         "lines.csv",
         bytes(output.getvalue(), "utf-8"),

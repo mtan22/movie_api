@@ -52,7 +52,7 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
         raise HTTPException(status_code=404, details="movie is not found.")
     if convo_char_1 not in db.characters or convo_char_2 not in db.characters:
         raise HTTPException(status_code=404, details="character is not found.")
-    if movie_id != char1["movie_id"] or movie_id != char2["movie_id"]:
+    if movie_id != char1.movie_id or movie_id != char2.movie_id:
         raise HTTPException(status_code=404, details="characters are not part of the referenced movie.")
     new_len = len(db.convo_list)-1
     convo_index = int(db.convo_list[new_len]["conversation_id"]) # getting next conversation id

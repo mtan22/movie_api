@@ -33,7 +33,6 @@ log_csv = (
 
 logs = []
 
-
 for i in csv.DictReader(io.StringIO(log_csv), skipinitialspace=True):
     logs.append(i)
 
@@ -75,7 +74,6 @@ def upload_new_convo():
         {"x-upsert": "true"},
     )
 
-
 movies_csv = (
     supabase.storage.from_("movie-api")
     .download("movies.csv")
@@ -100,34 +98,16 @@ def upload_new_movie():
         {"x-upsert": "true"},
     )
 
-
 lines_csv = (
     supabase.storage.from_("movie-api")
     .download("lines.csv")
     .decode("utf-8")
 )
 
-
 lines_list=[]
 
 for i in csv.DictReader(io.StringIO(lines_csv), skipinitialspace=True):
     lines_list.append(i)
-
-def try_parse(type, val):
-    try:
-        return type(val)
-    except ValueError:
-        return None
-
-for i in lines_list:
-    line = Line(
-        try_parse(int, i["line_id"]),
-        try_parse(int, i["character_id"]),
-        try_parse(int, i["movie_id"]),
-        try_parse(int, i["conversation_id"]),
-        try_parse(int, i["line_sort"]),
-        i["line_text"],
-    )
 
 def upload_new_lines():
     output = io.StringIO()
@@ -142,6 +122,12 @@ def upload_new_lines():
         bytes(output.getvalue(), "utf-8"),
         {"x-upsert": "true"},
     )
+
+def try_parse(type, val):
+    try:
+        return type(val)
+    except ValueError:
+        return None
 
 with open("movies.csv", mode="r", encoding="utf8") as csv_file:
     movies = {

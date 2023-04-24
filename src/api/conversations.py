@@ -69,6 +69,7 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
     })
     db.upload_new_convo()
 
+
     # add lines
     for i in conversation.lines:
         char_id = i.character_id

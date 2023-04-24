@@ -104,6 +104,22 @@ def upload_new_movie():
 for i in csv.DictReader(io.StringIO(lines_csv), skipinitialspace=True):
     lines.append(i)
 
+def try_parse(type, val):
+    try:
+        return type(val)
+    except ValueError:
+        return None
+
+for i in lines:
+    line = Line(
+        try_parse(int, i["line_id"]),
+        try_parse(int, i["character_id"]),
+        try_parse(int, i["movie_id"]),
+        try_parse(int, i["conversation_id"]),
+        try_parse(int, i["line_sort"]),
+        i["line_text"],
+    )
+
 def upload_new_lines():
     output = io.StringIO()
     csv_writer = csv.DictWriter(
@@ -117,13 +133,6 @@ def upload_new_lines():
         bytes(output.getvalue(), "utf-8"),
         {"x-upsert": "true"},
     )
-
-def try_parse(type, val):
-    try:
-        return type(val)
-    except ValueError:
-        return None
-
 
 with open("movies.csv", mode="r", encoding="utf8") as csv_file:
     movies = {

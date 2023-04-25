@@ -29,31 +29,31 @@ def test_lines():
         assert response.json() == json.load(f)
 
 
-# def test_sort_filter():
-#     response = client.get(
-#         "/lines/?text=amy&limit=50&offset=0&sort=line_text"
-#     )
-#     assert response.status_code == 200
+def test_sort_filter():
+    response = client.get(
+        "/lines/?text=amy&limit=50&offset=0&sort=line_text"
+    )
+    assert response.status_code == 200
 
-#     with open(
-#         "test/lines/lines-text=amy&limit=50&offset=0&sort=line_text.json",
-#         encoding="utf-8",
-#     ) as f:
-#         assert response.json() == json.load(f)
+    with open(
+        "test/lines/lines-text=amy&limit=50&offset=0&sort=line_text.json",
+        encoding="utf-8",
+    ) as f:
+        assert response.json() == json.load(f)
 
-# def test_sort_filter2():
-#     response = client.get(
-#         "/lines/?text=%20&limit=250&offset=42&sort=movie_title"
-#     )
-#     assert response.status_code == 200
+def test_sort_filter2():
+    response = client.get(
+        "/lines/?text=%20&limit=250&offset=42&sort=movie_title"
+    )
+    assert response.status_code == 200
 
-#     with open(
-#         "test/lines/lines-text=space&limit=250&offset=42&sort=movie_title.json",
-#         encoding="utf-8",
-#     ) as f:
-#         assert response.json() == json.load(f)
+    with open(
+        "test/lines/lines-text=space&limit=250&offset=42&sort=movie_title.json",
+        encoding="utf-8",
+    ) as f:
+        assert response.json() == json.load(f)
 
-# def test_get_conversation():
+# def test_get_conversation(): 
 #     response = client.get("/conversations/518")
 #     assert response.status_code == 200
 

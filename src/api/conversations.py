@@ -37,6 +37,10 @@ def add_conversation(movie_id: int, conversation: ConversationJson):
 
     The endpoint returns the id of the resulting conversation that was created.
     """
+    # POST call does not update the database right away. If you try to get the endpoint that grabs the new conversation 
+    # that is added right after you make the POST call, the user has to let the database update and refresh for
+    # the GET conversation call to work
+
     line_sort=1
     convo_char_1 = conversation.character_1_id
     convo_char_2 = conversation.character_2_id

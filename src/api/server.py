@@ -27,11 +27,11 @@ tags_metadata = [
     },
     {
         "name": "lines",
-        "description": "Access information on lines in movies."
+        "description": "Access information on lines in movies.",
     },
     {
         "name": "conversations",
-        "description": "Access information on conversations in movies."
+        "description": "Access information on conversations in movies.",
     }
 ]
 

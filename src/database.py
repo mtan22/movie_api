@@ -28,13 +28,6 @@ movies = sqlalchemy.Table("movies", metadata_obj, autoload_with=engine)
 
 characters = sqlalchemy.Table("characters", metadata_obj, autoload_with=engine)
 
-db = {
-    "movies": movies,
-    "characters":characters,
-    "conversations":conversations,
-    "lines":lines,
-}
-
 # # TODO: Below is purely an example of reading and then writing a csv from supabase.
 # # You should delete this code for your working example.
 

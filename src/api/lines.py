@@ -3,7 +3,7 @@ from enum import Enum
 from collections import Counter
 import re, urllib.parse
 
-from fastapi.params import Query
+from fastapi.params import Query 
 from src import database as db
 import sqlalchemy
 from sqlalchemy import func, join, outerjoin, select

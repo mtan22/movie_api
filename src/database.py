@@ -7,6 +7,20 @@ import dotenv
 from sqlalchemy import create_engine
 import sqlalchemy
 
+# # DO NOT CHANGE THIS TO BE HARDCODED. ONLY PULL FROM ENVIRONMENT VARIABLES.
+dotenv.load_dotenv()
+supabase_api_key = os.environ.get("SUPABASE_API_KEY")
+supabase_url = os.environ.get("SUPABASE_URL")
+
+if supabase_api_key is None or supabase_url is None:
+    raise Exception(
+        "You must set the SUPABASE_API_KEY and SUPABASE_URL environment variables."
+    )
+
+supabase: Client = create_client(supabase_url, supabase_api_key)
+
+sess = supabase.auth.get_session()
+
 def database_connection_url():
     dotenv.load_dotenv()
     DB_USER: str = os.environ.get("POSTGRES_USER")
@@ -18,47 +32,17 @@ def database_connection_url():
 
 engine = sqlalchemy.create_engine(database_connection_url())
 
-# Create a single connection to the database. Later we will discuss pooling connections.
 conn = engine.connect()
 
-# The sql we want to execute
-sql = """
-SELECT character_id as CHARACTERS
-FROM characters
-GROUP BY movie_id, characters
-"""
+metadata_obj = sqlalchemy.MetaData()
 
-# Run the sql and returns a CursorResult object which represents the SQL results
-result = conn.execute(sqlalchemy.text(sql))
+conversations = sqlalchemy.Table("conversations", metadata_obj, autoload_with=engine)
 
-# engine = sqlalchemy.create_engine(database_connection_url())
+lines = sqlalchemy.Table("lines", metadata_obj, autoload_with=engine)
 
-# conn = engine.connect()
+movies = sqlalchemy.Table("movies", metadata_obj, autoload_with=engine)
 
-# metadata_obj = sqlalchemy.MetaData()
-
-# conversations = sqlalchemy.Table("conversations", metadata_obj, autoload_with=engine)
-
-# lines = sqlalchemy.Table("lines", metadata_obj, autoload_with=engine)
-
-# movies = sqlalchemy.Table("movies", metadata_obj, autoload_with=engine)
-
-# characters = sqlalchemy.Table("characters", metadata_obj, autoload_with=engine)
-
-
-# # DO NOT CHANGE THIS TO BE HARDCODED. ONLY PULL FROM ENVIRONMENT VARIABLES.
-# dotenv.load_dotenv()
-# supabase_api_key = os.environ.get("SUPABASE_API_KEY")
-# supabase_url = os.environ.get("SUPABASE_URL")
-
-# if supabase_api_key is None or supabase_url is None:
-#     raise Exception(
-#         "You must set the SUPABASE_API_KEY and SUPABASE_URL environment variables."
-#     )
-
-# supabase: Client = create_client(supabase_url, supabase_api_key)
-
-# sess = supabase.auth.get_session()
+characters = sqlalchemy.Table("characters", metadata_obj, autoload_with=engine)
 
 # # TODO: Below is purely an example of reading and then writing a csv from supabase.
 # # You should delete this code for your working example.

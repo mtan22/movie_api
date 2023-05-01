@@ -4,26 +4,39 @@ from collections import Counter
 
 from fastapi.params import Query
 from src import database as db
+import sqlalchemy
+from sqlalchemy import func, join, outerjoin, select
 
 router = APIRouter()
 
+def get_top_convos():
+    top_conversations = (
+        db.conversations.join(db.lines, db.lines.c.conversation_id == db.conversations.c.conversation_id)
+        .join(db.characters, db.characters.c.character_id == db.lines.c.character_id))
 
-def get_top_conv_characters(character):
-    c_id = character.id
-    movie_id = character.movie_id
-    all_convs = filter(
-        lambda conv: conv.movie_id == movie_id
-        and (conv.c1_id == c_id or conv.c2_id == c_id),
-        db.conversations.values(),
-    )
-    line_counts = Counter()
+    top_conversations = top_conversations.with_entities(
+            func.sum(db.lines.c.num_lines).label("num_lines"),
+            db.characters.c.character_id,
+            db.characters.c.name,
+            db.characters.c.gender,
+        )
 
-    for conv in all_convs:
-        other_id = conv.c2_id if conv.c1_id == c_id else conv.c1_id
-        line_counts[other_id] += conv.num_lines
+    top_conversations = top_conversations.filter(db.conversations.c.character1_id == id).filter(db.conversations.c.character2_id == db.characters.c.character_id).group_by(db.characters.c.character_id, db.characters.c.name, db.characters.c.gender)
 
-    return line_counts.most_common()
+    top_conversations = top_conversations.union_all(
+            db.conversations.join(db.lines, db.lines.c.conversation_id == db.conversations.c.conversation_id)
+            .join(db.characters, db.characters.c.character_id == db.lines.c.character_id)
+            .with_entities(
+                func.sum(db.lines.c.num_lines).label("num_lines"),
+                db.characters.c.character_id,
+                db.characters.c.name,
+                db.characters.c.gender,
+            )
+            .filter(db.conversations.c.character2_id == id)
+            .filter(db.conversations.c.character1_id == db.characters.c.character_id)
+            .group_by(db.characters.c.character_id, db.characters.c.name, db.characters.c.gender)).order_by(func.sum(db.lines.c.num_lines).desc()).limit(5).all()
 
+    return top_conversations
 
 @router.get("/characters/{id}", tags=["characters"])
 def get_character(id: int):
@@ -47,28 +60,37 @@ def get_character(id: int):
       originally queried character.
     """
 
-    character = db.characters.get(id)
+    character = db.characters.select().where(db.characters.c.character_id == id).execute()
+    character = character.first()
+    if not character:
+       raise HTTPException(422, "character not found.")
 
-    if character:
-        movie = db.movies.get(character.movie_id)
-        result = {
-            "character_id": character.id,
-            "character": character.name,
-            "movie": movie and movie.title,
-            "gender": character.gender,
-            "top_conversations": (
-                {
-                    "character_id": other_id,
-                    "character": db.characters[other_id].name,
-                    "gender": db.characters[other_id].gender,
-                    "number_of_lines_together": lines,
-                }
-                for other_id, lines in get_top_conv_characters(character)
-            ),
+    top_conversations = get_top_convos()
+
+    top_conversations_json = [
+        {
+            "character_id": character_id,
+            "character": name,
+            "gender": gender,
+            "number_of_lines_together": num_lines,
         }
-        return result
+        for num_lines, character_id, name, gender in top_conversations
+    ]
 
-    raise HTTPException(status_code=404, detail="character not found.")
+    movie = db.movies.select().where(db.movies.c.movie_id == character.movie_id).execute()
+    movie = movie.first().title
+
+    json = {
+        "character_id": character.character_id,
+        "character": character.name,
+        "movie": movie,
+        "gender": character.gender,
+        "top_conversations": top_conversations_json,
+    }
+
+    return json
+
+
 
 
 class character_sort_options(str, Enum):
@@ -105,36 +127,41 @@ def list_characters(
     maximum number of results to return. The `offset` query parameter specifies the
     number of results to skip before returning results.
     """
+    sort_columns = {
+        character_sort_options.character: db.characters.c.name,
+        character_sort_options.movie: db.movies.c.title,
+        character_sort_options.number_of_lines: sqlalchemy.desc("num_lines"),
+    }
+    order_by = sort_columns[sort]
 
-    if name:
-
-        def filter_fn(c):
-            return c.name and name.upper() in c.name
-
-    else:
-
-        def filter_fn(_):
-            return True
-
-    items = list(filter(filter_fn, db.characters.values()))
-
-    def none_last(x, reverse=False):
-        return (x is None) ^ reverse, x
-
-    if sort == character_sort_options.character:
-        items.sort(key=lambda c: none_last(c.name))
-    elif sort == character_sort_options.movie:
-        items.sort(key=lambda c: none_last(db.movies[c.movie_id].title))
-    elif sort == character_sort_options.number_of_lines:
-        items.sort(key=lambda c: none_last(c.num_lines, True), reverse=True)
-
-    json = (
-        {
-            "character_id": c.id,
-            "character": c.name,
-            "movie": db.movies[c.movie_id].title,
-            "number_of_lines": c.num_lines,
-        }
-        for c in items[offset : offset + limit]
+    query = (
+        sqlalchemy.select(
+            db.characters.c.character_id,
+            db.characters.c.name,
+            db.movies.c.title,
+            func.count(db.lines.c.line_id).label("num_lines")
+        )
+        .select_from(db.characters.outerjoin(db.movies, db.movies.c.movie_id == db.characters.c.movie_id)
+        )
+        .join(db.lines, db.characters.c.character_id == db.lines.c.character_id)
+        .group_by(db.characters.c.character_id, db.movies.c.title,)
+        .where(db.characters.c.name.ilike(f"%{name}%"))
+        .order_by(order_by, db.characters.c.character_id)
+        .limit(limit)
+        .offset(offset)
     )
+
+    with db.engine.connect() as conn:
+        result = conn.execute(query)
+        json = [
+            {
+                "character_id": row.character_id,
+                "character": row.name,
+                "movie": row.title,
+                "num_lines": row.num_lines,
+            }
+            for row in result
+        ]
+
     return json
+   

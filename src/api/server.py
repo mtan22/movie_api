@@ -25,6 +25,14 @@ tags_metadata = [
         "name": "movies",
         "description": "Access information on top-rated movies.",
     },
+    {
+        "name": "lines",
+        "description": "Access information on lines in movies."
+    },
+    {
+        "name": "conversations",
+        "description": "Access information on conversations in movies."
+    }
 ]
 
 app = FastAPI(

@@ -1,9 +1,43 @@
 from fastapi import APIRouter, HTTPException
 from enum import Enum
 from src import database as db
+import sqlalchemy
+from sqlalchemy import func, join, outerjoin, select, desc
 from fastapi.params import Query
 
 router = APIRouter()
+
+def get_top_chars(movie_id: int):
+    query = (
+        sqlalchemy.select(
+            db.characters.c.character_id,
+            func.count(db.lines.c.line_id).label("num_lines")
+        )
+        .select_from(db.characters.join(db.lines).join(db.movies))
+        .where(db.movies.c.movie_id == movie_id)
+        .group_by(db.characters.c.character_id)
+        .order_by(desc("num_lines"))
+        .limit(5)
+        .subquery()
+    )
+
+    c = (
+        sqlalchemy.select(
+            query.c.character_id,
+            db.characters.c.name,
+            query.c.num_lines
+        )
+        .select_from(query.join(db.characters))
+        .order_by(desc("num_lines"))
+    )
+
+    with db.engine.connect() as conn:
+        sol = conn.execute(c).fetchall()
+        chars = [{"character_id": i.character_id, "character": i.name, "num_lines": i.num_lines}
+            for i in sol
+        ]
+
+    return chars
 
 
 @router.get("/movies/{movie_id}", tags=["movies"])
@@ -23,24 +57,36 @@ def get_movie(movie_id: int):
 
     """
 
-    movie = db.movies.get(movie_id)
-    if movie:
-        top_chars = [
-            {"character_id": c.id, "character": c.name, "num_lines": c.num_lines}
-            for c in db.characters.values()
-            if c.movie_id == movie_id
+    query = (
+        sqlalchemy.select(
+            db.movies.c.movie_id,
+            db.movies.c.title,
+            db.characters.c.character_id,
+            db.characters.c.name,
+            func.count(db.lines.c.line_id).label("num_lines")
+        )
+        .select_from(db.movies.join(db.lines).join(db.characters))
+        .where(db.movies.c.movie_id == movie_id)
+        .group_by(db.characters.c.character_id)
+        .order_by(desc("num_lines"))
+        .limit(5)
+    )
+
+    with db.engine.connect() as conn:
+        sol = conn.execute(query).fetchall()
+        if not sol:
+            raise HTTPException(422, "movie not found.")
+        chars = [
+            {"character_id": i.character_id, "character": i.name, "num_lines": i.num_lines}
+            for i in sol
         ]
-        top_chars.sort(key=lambda c: c["num_lines"], reverse=True)
-
-        result = {
-            "movie_id": movie_id,
-            "title": movie.title,
-            "top_characters": top_chars[0:5],
+        json = {
+            "movie_id": sol[0].movie_id,
+            "title": sol[0].title,
+            "top_characters": chars
         }
-        return result
 
-    raise HTTPException(status_code=404, detail="movie not found.")
-
+    return json
 
 class movie_sort_options(str, Enum):
     movie_title = "movie_title"
@@ -48,7 +94,6 @@ class movie_sort_options(str, Enum):
     rating = "rating"
 
 
-# Add get parameters
 @router.get("/movies/", tags=["movies"])
 def list_movies(
     name: str = "",
@@ -78,33 +123,42 @@ def list_movies(
     maximum number of results to return. The `offset` query parameter specifies the
     number of results to skip before returning results.
     """
-    if name:
+    json=[]
 
-        def filter_fn(m):
-            return m.title and name.lower() in m.title
+    order_by_column = {
+        movie_sort_options.movie_title: db.movies.c.title,
+        movie_sort_options.year: db.movies.c.year,
+        movie_sort_options.rating: sqlalchemy.desc(db.movies.c.imdb_rating),
+    }[sort]
 
-    else:
-
-        def filter_fn(_):
-            return True
-
-    items = list(filter(filter_fn, db.movies.values()))
-    if sort == movie_sort_options.movie_title:
-        items.sort(key=lambda m: m.title)
-    elif sort == movie_sort_options.year:
-        items.sort(key=lambda m: m.year)
-    elif sort == movie_sort_options.rating:
-        items.sort(key=lambda m: m.imdb_rating, reverse=True)
-
-    json = (
-        {
-            "movie_id": m.id,
-            "movie_title": m.title,
-            "year": m.year,
-            "imdb_rating": m.imdb_rating,
-            "imdb_votes": m.imdb_votes,
-        }
-        for m in items[offset : offset + limit]
+    query = (
+        sqlalchemy.select(
+            db.movies.c.movie_id,
+            db.movies.c.title,
+            db.movies.c.year,
+            db.movies.c.imdb_rating,
+            db.movies.c.imdb_votes,
+        )
+        .limit(limit)
+        .offset(offset)
+        .order_by(order_by_column, db.movies.c.movie_id)
     )
+    if name != "":
+        query = query.filter(db.movies.c.title.ilike(f"%{name}%"))
+
+    conn = db.engine.connect()
+    sol = conn.execute(query)
+    for i in sol:
+        json.append(
+            {
+                "movie_id": i.movie_id,
+                "movie_title": i.title,
+                "year": i.year,
+                "imdb_rating": i.imdb_rating,
+                "imdb_votes": i.imdb_votes,
+            }
+        )
+
+    conn.close()
 
     return json

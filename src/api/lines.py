@@ -1,9 +1,12 @@
 from fastapi import APIRouter, HTTPException
 from enum import Enum
 from collections import Counter
+import re, urllib.parse
 
 from fastapi.params import Query
 from src import database as db
+import sqlalchemy
+from sqlalchemy import func, join, outerjoin, select
 
 router = APIRouter()
 
@@ -21,23 +24,33 @@ def get_line(id: int):
     * `conversation_id`: The internal id of the conversation that contains the line.
     * `text`: The text of the line.
     """
+    line = db.session.query(db.lines, db.characters, db.movies) \
+        .join(db.characters, db.lines.character_id == db.characters.character_id) \
+        .join(db.movies, db.characters.movie_id == db.movies.movie_id) \
+        .filter(db.lines.line_id == id).first()
 
-    line = db.lines.get(id)
+    if line is None:
+        raise HTTPException(422, "line not found.")
+    convo_id = line[0].conversation_id
+    num_total_lines = db.session.query(func.count(db.lines.line_id)) \
+        .filter(db.lines.conversation_id == convo_id).scalar()
+    num_words = len(re.findall(r'\w+', line[0].line_text))
+    num_sentences = len(re.split('[.?!]+', line[0].line_text))
 
-    if line:
-        character = db.characters.get(line.c_id)
-        result = {
-            "line_id": id,
-            "character_id": line.c_id,
-            "character": character.name,
-            "movie_id": line.movie_id,
-            "movie_title": db.movies[line.movie_id].title,
-            "conversation_id": line.conv_id,
-            "line_text": line.line_text
+    response = {
+        "line_id": line[0].line_id,
+        "text": line[0].line_text,
+        "character": line[1].name,
+        "age": line[1].age,
+        "movie": line[2].title,
+        "line_info": {
+            "num_words": num_words,
+            "num_sentences": num_sentences,
+            "num_total_lines": num_total_lines
         }
-        return result
-    else:
-        raise HTTPException(status_code=404, detail="line not found.")
+    }
+
+    return response
 
 
 class line_sort_options(str, Enum):
@@ -69,31 +82,42 @@ def list_lines(
     maximum number of results to return. The `offset` query parameter specifies the
     number of results to skip before returning results.
     """
-     
-    if text:
-        def filter_fn(line):
-            return (text in line.line_text)
-    else:
-        def filter_fn(line):
-            return True
-    lista = list(filter(filter_fn, db.lines.values()))
-    
-    if sort == line_sort_options.movie_title:
-        lista.sort(key=lambda i: db.movies[i.movie_id].title)
-    elif sort == line_sort_options.line_text:
-        lista = [i for i in lista if i.line_text]
-        lista.sort(key=lambda i: i.line_text)
-    
-    json = ({
-            "line_id": i.id,
-            "character_id": i.c_id,
-            "character": db.characters[i.c_id].name,
-            "text": i.line_text,
-            "movie_title": db.movies[i.movie_id].title,
-            }
-            for i in lista[offset:offset + limit])
-    return json
 
+    json = []
+
+    order_by_column = {
+        line_sort_options.character: db.characters.c.name,
+        line_sort_options.movie: db.movies.c.title,
+        line_sort_options.text: db.lines.c.line_text,
+    }[sort]
+    
+    query = select(
+        db.lines.c.line_id,
+        db.lines.c.line_text,
+        db.movies.c.title,
+        db.characters.c.name
+    ).select_from(
+        join(db.lines, db.movies, db.lines.c.movie_id == db.movies.c.movie_id).join(
+            db.characters, db.lines.c.character_id == db.characters.c.character_id
+        )
+    ).limit(limit).offset(offset).order_by(order_by_column, db.lines.c.line_text)
+
+    if text != "":
+        query = query.filter(db.lines.c.line_text.ilike(f"%{text}%"))
+
+    conn = db.engine.connect()
+    sol = conn.execute(query)
+    for i in sol:
+        json.append(
+            {
+                "line_id": i.line_id,
+                "line_text": i.line_text,
+                "movie": i.title,
+                "character": i.name,
+            }
+        )
+    conn.close()
+    return json
 
 @router.get("/conversations/{id}", tags=["conversations"])
 def get_conversation(id: int):
@@ -109,21 +133,48 @@ def get_conversation(id: int):
     * `character`: The name of the character.
     * `line' : The text of the line.
     """
+    lines = []
+    json = []
+    query = select([
+        db.conversations.c.conversation_id,
+        db.characters.c.name.label('character'),
+        db.movies.c.movie_id,
+        db.movies.c.title.label('movie_title'),
+        db.conversations.c.conversation
+    ]).select_from(
+        join(db.conversations, db.lines, db.conversations.c.conversation_id == db.lines.c.conversation_id)
+        .join(db.characters, db.lines.c.character_id == db.characters.c.character_id)
+        .join(db.movies, db.lines.c.movie_id == db.movies.c.movie_id)
+    ).where(db.conversations.c.conversation_id == id)
 
-    c = db.conversations.get(id)
-    if c:
-        movie = db.movies.get(c.movie_id)
-        result = {
-            "conversation_id": id,
-            "movie_id": c.movie_id,
-            "movie_title": movie.title,
-            "conversation": ( 
-                {"character_id": i.c_id,
-                "character": db.characters.get(i.c_id).name,
-                "line": i.line_text} 
-                for i in db.lines.values() if id == i.id
-            )
-        }
-        return result
-    raise HTTPException(status_code=404, detail="conversation not found.")
+    with db.engine.connect() as conn:
+        result = conn.execute(query).fetchone()
+        if result is None:
+            raise HTTPException(422, "no conversation found.")
+        conversation_id, character, movie_id, movie_title, conversation = result
+        line_query = select([
+            db.characters.c.character_id,
+            db.characters.c.name.label('character'),
+            db.lines.c.line_text.label('line')
+        ]).select_from(
+            join(db.lines, db.characters, db.lines.c.character_id == db.characters.c.character_id)
+        ).where(db.lines.c.conversation_id == conversation_id).order_by(db.lines.c.line_number)
+
+        for line in conn.execute(line_query):
+            lines.append({
+                "character_id": line.character_id,
+                "character": line.character,
+                "line": line.line
+            })
+    
+        json.append({
+            "conversation_id": conversation_id,
+            "character": character,
+            "movie_id": movie_id,
+            "movie_title": movie_title,
+            "conversation": conversation,
+            "lines": lines
+        })
+
+        return json
 

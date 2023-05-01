@@ -18,17 +18,32 @@ def database_connection_url():
 
 engine = sqlalchemy.create_engine(database_connection_url())
 
+# Create a single connection to the database. Later we will discuss pooling connections.
 conn = engine.connect()
 
-metadata_obj = sqlalchemy.MetaData()
+# The sql we want to execute
+sql = """
+SELECT character_id as CHARACTERS
+FROM characters
+GROUP BY movie_id, characters
+"""
 
-conversations = sqlalchemy.Table("conversations", metadata_obj, autoload_with=engine)
+# Run the sql and returns a CursorResult object which represents the SQL results
+result = conn.execute(sqlalchemy.text(sql))
 
-lines = sqlalchemy.Table("lines", metadata_obj, autoload_with=engine)
+# engine = sqlalchemy.create_engine(database_connection_url())
 
-movies = sqlalchemy.Table("movies", metadata_obj, autoload_with=engine)
+# conn = engine.connect()
 
-characters = sqlalchemy.Table("characters", metadata_obj, autoload_with=engine)
+# metadata_obj = sqlalchemy.MetaData()
+
+# conversations = sqlalchemy.Table("conversations", metadata_obj, autoload_with=engine)
+
+# lines = sqlalchemy.Table("lines", metadata_obj, autoload_with=engine)
+
+# movies = sqlalchemy.Table("movies", metadata_obj, autoload_with=engine)
+
+# characters = sqlalchemy.Table("characters", metadata_obj, autoload_with=engine)
 
 
 # # DO NOT CHANGE THIS TO BE HARDCODED. ONLY PULL FROM ENVIRONMENT VARIABLES.

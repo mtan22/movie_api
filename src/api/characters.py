@@ -9,35 +9,6 @@ from sqlalchemy import func, join, outerjoin, select
 
 router = APIRouter()
 
-def get_top_convos():
-    top_conversations = (
-        db.conversations.join(db.lines, db.lines.c.conversation_id == db.conversations.c.conversation_id)
-        .join(db.characters, db.characters.c.character_id == db.lines.c.character_id))
-
-    top_conversations = top_conversations.with_entities(
-            func.sum(db.lines.c.num_lines).label("num_lines"),
-            db.characters.c.character_id,
-            db.characters.c.name,
-            db.characters.c.gender,
-        )
-
-    top_conversations = top_conversations.filter(db.conversations.c.character1_id == id).filter(db.conversations.c.character2_id == db.characters.c.character_id).group_by(db.characters.c.character_id, db.characters.c.name, db.characters.c.gender)
-
-    top_conversations = top_conversations.union_all(
-            db.conversations.join(db.lines, db.lines.c.conversation_id == db.conversations.c.conversation_id)
-            .join(db.characters, db.characters.c.character_id == db.lines.c.character_id)
-            .with_entities(
-                func.sum(db.lines.c.num_lines).label("num_lines"),
-                db.characters.c.character_id,
-                db.characters.c.name,
-                db.characters.c.gender,
-            )
-            .filter(db.conversations.c.character2_id == id)
-            .filter(db.conversations.c.character1_id == db.characters.c.character_id)
-            .group_by(db.characters.c.character_id, db.characters.c.name, db.characters.c.gender)).order_by(func.sum(db.lines.c.num_lines).desc()).limit(5).all()
-
-    return top_conversations
-
 @router.get("/characters/{id}", tags=["characters"])
 def get_character(id: int):
     """
@@ -59,39 +30,71 @@ def get_character(id: int):
     * `number_of_lines_together`: The number of lines the character has with the
       originally queried character.
     """
+    query = (
+        db.characters.join(db.movies)
+        .join(
+            db.conversations,
+            sqlalchemy.or_(
+                db.conversations.c.character1_id == id,
+                db.conversations.c.character2_id == id,
+            ),
+        )
+        .join(db.lines, db.lines.c.conversation_id == db.conversations.c.conversation_id)
+        .join(db.characters.alias("c2"), db.lines.c.character_id != id)
+        .select(
+            db.characters.c.character_id,
+            db.characters.c.name.label("character"),
+            db.movies.c.title.label("movie"),
+            db.characters.c.gender,
+            sqlalchemy.func.count(db.lines.c.line_id).label("number_of_lines_together"),
+            db.characters.c.character_id.label("c2_character_id"),
+            db.characters.alias("c2").c.name.label("c2_character"),
+            db.characters.alias("c2").c.gender.label("c2_gender"),
+        )
+        .where(db.characters.c.character_id == id)
+        .group_by(
+            db.characters.c.character_id,
+            db.movies.c.title,
+            db.characters.c.gender,
+            db.characters.c.name,
+            db.characters.alias("c2").c.name,
+            db.characters.alias("c2").c.gender,
+            db.characters.alias("c2").c.character_id,
+        )
+    )
 
-    character = db.characters.select().where(db.characters.c.character_id == id).execute()
-    character = character.first()
-    if not character:
-       raise HTTPException(422, "character not found.")
+    with db.engine.connect() as conn:
+        results = conn.execute(query)
 
-    top_conversations = get_top_convos()
+        json = []
+        for i in results:
+            json.append(i)
 
-    top_conversations_json = [
-        {
-            "character_id": character_id,
-            "character": name,
-            "gender": gender,
-            "number_of_lines_together": num_lines,
+        if not json:
+            raise HTTPException(status_code=404, detail="character not found.")
+
+        character = {
+            "character_id": json[0]["character_id"],
+            "character": json[0]["character"],
+            "movie": json[0]["movie"],
+            "gender": json[0]["gender"],
         }
-        for num_lines, character_id, name, gender in top_conversations
-    ]
 
-    movie = db.movies.select().where(db.movies.c.movie_id == character.movie_id).execute()
-    movie = movie.first().title
+        top_conversations = []
+        for i in json:
+            if i["c2_character_id"] != id:
+                top_conversations.append(
+                    {
+                        "character_id": i["c2_character_id"],
+                        "character": i["c2_character"],
+                        "gender": i["c2_gender"],
+                        "number_of_lines_together": i["number_of_lines_together"],
+                    }
+                )
 
-    json = {
-        "character_id": character.character_id,
-        "character": character.name,
-        "movie": movie,
-        "gender": character.gender,
-        "top_conversations": top_conversations_json,
-    }
+        character["top_conversations"] = top_conversations
 
-    return json
-
-
-
+        return character
 
 class character_sort_options(str, Enum):
     character = "character"
@@ -130,23 +133,21 @@ def list_characters(
     sort_columns = {
         character_sort_options.character: db.characters.c.name,
         character_sort_options.movie: db.movies.c.title,
-        character_sort_options.number_of_lines: sqlalchemy.desc("num_lines"),
+        character_sort_options.number_of_lines: sqlalchemy.func.count(db.lines.c.line_text).desc(),
     }
     order_by = sort_columns[sort]
 
     query = (
         sqlalchemy.select(
             db.characters.c.character_id,
-            db.characters.c.name,
-            db.movies.c.title,
-            func.count(db.lines.c.line_id).label("num_lines")
+            db.characters.c.name.label("character"),
+            db.movies.c.title.label("movie"),
+            sqlalchemy.func.count(db.lines.c.line_text).label("number_of_lines"),
         )
-        .select_from(db.characters.outerjoin(db.movies, db.movies.c.movie_id == db.characters.c.movie_id)
-        )
-        .join(db.lines, db.characters.c.character_id == db.lines.c.character_id)
-        .group_by(db.characters.c.character_id, db.movies.c.title,)
+        .select_from(db.characters.join(db.movies).outerjoin(db.lines))
         .where(db.characters.c.name.ilike(f"%{name}%"))
-        .order_by(order_by, db.characters.c.character_id)
+        .group_by(db.characters.c.character_id, db.movies.c.title)
+        .order_by(sort_columns[sort])
         .limit(limit)
         .offset(offset)
     )

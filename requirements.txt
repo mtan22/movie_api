@@ -5,3 +5,4 @@ sqlalchemy==2.0.7
 python-dotenv
 pre-commit
 supabase
+psycopg2-binary==2.9.6

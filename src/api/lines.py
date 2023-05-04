@@ -163,7 +163,7 @@ def get_conversation(id: int):
                 "character": line.character,
                 "line": line.line
             })
-    
+     
         json.append({
             "conversation_id": conversation_id,
             "character": character,

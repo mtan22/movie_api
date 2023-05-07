@@ -18,6 +18,8 @@ def database_connection_url():
 
 engine = sqlalchemy.create_engine(database_connection_url())
 
+conn = engine.connect()
+
 metadata_obj = sqlalchemy.MetaData()
 
 conversations = sqlalchemy.Table("conversations", metadata_obj, autoload_with=engine)

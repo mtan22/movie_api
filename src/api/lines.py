@@ -22,32 +22,41 @@ def get_line(id: int):
     * `conversation_id`: The internal id of the conversation that contains the line.
     * `text`: The text of the line.
     """
-    query = sqlalchemy.select(
-        db.lines.c.line_id,
-        db.lines.c.line_text,
-        db.lines.c.character_id,
-        db.movies.c.movie_id,
-        db.movies.c.title.label("movie_title"),
-        db.conversations.c.conversation_id
-    ).select_from(
-        db.lines.join(db.movies, db.lines.c.movie_id == db.movies.c.movie_id)
-        .join(db.conversations, db.conversations.c.conversation_id == db.lines.c.conversation_id)
-    ).where(db.lines.c.line_id == id)
-    line = db.engine.connect().execute(query).fetchone()
-    if line is None:
-        raise HTTPException(422, "Line not found.")
+    with db.engine.connect() as conn:
+        var = select(
+            db.lines.c.line_id,
+            db.lines.c.character_id,
+            db.characters.c.name,
+            db.movies.c.movie_id,
+            db.movies.c.title,
+            db.lines.c.line_text,
+            db.lines.c.conversation_id
+        ).select_from(
+            join(
+                join(db.lines, db.characters, db.lines.c.character_id == db.characters.c.character_id),
+                db.movies, db.lines.c.movie_id == db.movies.c.movie_id
+            )
+        ).where(
+            db.lines.c.line_id == id
+        )
+        var = conn.execute(var).fetchall()
 
-    json = {
-        "line_id": line.line_id,
-        "character_id": line.character_id,
-        "character": db.characters.get(line.character_id).name,
-        "movie_id": line.movie_id,
-        "movie_title": line.movie_title,
-        "conversation_id": line.conversation_id,
-        "text": line.line_text,
-    }
+        if var:
+            line_dict = [row._asdict() for row in var]
+            result = {
+                "line_id": line_dict[0]["line_id"],
+                "character_id": line_dict[0]["character_id"],
+                "character": line_dict[0]["name"],
+                "movie_id": line_dict[0]["movie_id"],
+                "movie": line_dict[0]["title"],
+                "conversation_id": line_dict[0]["conversation_id"],
+                "text": line_dict[0]["line_text"],
+            }
 
-    return json
+            return result
+
+    raise HTTPException(status_code=404, detail="line not found.")
+
 
 class line_sort_options(str, Enum):
     movie_title = "movie_title"
@@ -78,100 +87,77 @@ def list_lines(
     maximum number of results to return. The `offset` query parameter specifies the
     number of results to skip before returning results.
     """
+    if sort is line_sort_options.movie_title:
+        order_by = db.movies.c.title
+    elif sort is line_sort_options.line_text:
+        order_by = db.lines.c.line_text
+    else:
+        assert False
 
-    json = []
+    with db.engine.connect() as conn:
+        query = select(
+            db.lines.c.line_id,
+            db.characters.c.name.label("character"),
+            db.movies.c.title.label("movie"),
+            db.lines.c.conversation_id,
+            db.lines.c.line_text,
+        ).select_from(
+            join(
+                join(db.lines, db.characters, db.lines.c.character_id == db.characters.c.character_id),
+                db.movies, db.lines.c.movie_id == db.movies.c.movie_id
+            )
+        ).where(
+            db.characters.c.name.ilike(f"%{text}%")
+        ).limit(limit).offset(offset).order_by(order_by, db.lines.c.line_text)
+        
+        sol = conn.execute(query).fetchall()
 
-    order_by_column = {
-        line_sort_options.movie_title: db.movies.c.title,
-        line_sort_options.line_text: db.lines.c.line_text,
-    }[sort]
-    
-    query = select(
-        db.lines.c.line_id,
-        db.characters.c.character_id,
-        db.characters.c.name,
-        db.lines.c.line_text,
-        db.movies.c.title,
-    ).select_from(
-        join(db.lines, db.movies, db.lines.c.movie_id == db.movies.c.movie_id).join(
-            db.characters, db.lines.c.character_id == db.characters.c.character_id
-        )
-    ).limit(limit).offset(offset).order_by(order_by_column, db.lines.c.line_text)
-
-    if text != "":
-        query = query.filter(db.lines.c.line_text.ilike(f"%{text}%"))
-
-    conn = db.engine.connect()
-    sol = conn.execute(query)
-    for i in sol:
-        json.append(
-            {
-                "line_id": i.line_id,
-                "character_id": i.character_id,
-                "character": i.name,
-                "line_text": i.line_text,
-                "movie": i.title,
-            }
-        )
-    conn.close()
-    return json
+        if sol:
+            sol = [i._asdict() for i in sol]
+            return sol
+        
+    raise HTTPException(status_code=404, detail="lines not found.")
 
 @router.get("/conversations/{id}", tags=["conversations"])
 def get_conversation(id: int):
     """
     This endpoint returns a single conversation by its identifier. For each conversation it returns:
     * `conversation_id`: the internal id of the conversation.
-    * `character`: The name of the character that said the line.
-    * `movie_id`: The internal id of the movie that contains the line.
+    * `character_1`: The name of the character 1 in the conversation.
+    * `character_2`: The name of the character 2 in the conversation.
     * `movie_title`: The title of the movie the line is from.
-    * `conversation`: The text of the conversation.
-     Each conversation is represented by a dictionary with the following keys:
-    * `character_id`: the internal id of the character.
-    * `character`: The name of the character.
-    * `line' : The text of the line.
+    * `lines`: The text of the conversation.
+    Every line in lines is represented by a dictionary consisting of:
+       * `line_id`: the internal id of the line.
+       * `character`: the character who said the line.
+       * `line_text`: the text of the line.
     """
-    lines = []
-    json = []
-    query = select([
-        db.conversations.c.conversation_id,
-        db.characters.c.name.label('character'),
-        db.movies.c.movie_id,
-        db.movies.c.title.label('movie_title'),
-        db.conversations.c.conversation
-    ]).select_from(
-        join(db.conversations, db.lines, db.conversations.c.conversation_id == db.lines.c.conversation_id)
-        .join(db.characters, db.lines.c.character_id == db.characters.c.character_id)
-        .join(db.movies, db.lines.c.movie_id == db.movies.c.movie_id)
-    ).where(db.conversations.c.conversation_id == id)
-
     with db.engine.connect() as conn:
-        result = conn.execute(query).fetchone()
-        if result is None:
-            raise HTTPException(422, "no conversation found.")
-        conversation_id, character, movie_id, movie_title, conversation = result
-        line_query = select([
-            db.characters.c.character_id,
-            db.characters.c.name.label('character'),
-            db.lines.c.line_text.label('line')
-        ]).select_from(
-            join(db.lines, db.characters, db.lines.c.character_id == db.characters.c.character_id)
-        ).where(db.lines.c.conversation_id == conversation_id).order_by(db.lines.c.line_number)
+        query = f"""
+        SELECT convos.conversation_id convo_id, c1.name character_1, c2.name character_2, m.title movie
+        FROM conversations as convos
+        JOIN movies as m ON m.movie_id = convos.movie_id
+        JOIN characters as c1 ON c1.character_id = convos.character1_id
+        JOIN characters as c2 ON c2.character_id = convos.character2_id
+        WHERE {id} = convos.conversation_id
+        """
 
-        for line in conn.execute(line_query):
-            lines.append({
-                "character_id": line.character_id,
-                "character": line.character,
-                "line": line.line
-            })
-     
-        json.append({
-            "conversation_id": conversation_id,
-            "character": character,
-            "movie_id": movie_id,
-            "movie_title": movie_title,
-            "conversation": conversation,
-            "lines": lines
-        })
+        convo = conn.execute(sqlalchemy.text(query),).fetchone()._asdict()
+        if convo:
+            query = select(
+                db.lines.c.line_id,
+                db.characters.c.name.label("character"),
+                db.lines.c.line_text
+            ).select_from(
+                join(
+                    db.lines,
+                    db.characters,
+                    db.lines.c.character_id == db.characters.c.character_id
+                )
+            ).where(
+                db.lines.c.conversation_id == id
+            )
+            convo["lines"] = [l._asdict() for l in conn.execute(query).fetchall()]
+            return convo
 
-        return json
-
+    raise HTTPException(status_code=404, detail="line not found.")

@@ -7,39 +7,6 @@ from fastapi.params import Query
 
 router = APIRouter()
 
-def get_top_chars(movie_id: int):
-    query = (
-        sqlalchemy.select(
-            db.characters.c.character_id,
-            func.count(db.lines.c.line_id).label("num_lines")
-        )
-        .select_from(db.characters.join(db.lines).join(db.movies))
-        .where(db.movies.c.movie_id == movie_id)
-        .group_by(db.characters.c.character_id)
-        .order_by(desc("num_lines"))
-        .limit(5)
-        .subquery()
-    )
-
-    c = (
-        sqlalchemy.select(
-            query.c.character_id,
-            db.characters.c.name,
-            query.c.num_lines
-        )
-        .select_from(query.join(db.characters))
-        .order_by(desc("num_lines"))
-    )
-
-    with db.engine.connect() as conn:
-        sol = conn.execute(c).fetchall()
-        chars = [{"character_id": i.character_id, "character": i.name, "num_lines": i.num_lines}
-            for i in sol
-        ]
-
-    return chars
-
-
 @router.get("/movies/{movie_id}", tags=["movies"])
 def get_movie(movie_id: int):
     """
@@ -56,36 +23,51 @@ def get_movie(movie_id: int):
     * `num_lines`: The number of lines the character has in the movie.
 
     """
-
-    query = (
-        sqlalchemy.select(
-            db.movies.c.movie_id,
-            db.movies.c.title,
-            db.characters.c.character_id,
-            db.characters.c.name,
-            func.count(db.lines.c.line_id).label("num_lines")
-        )
-        .select_from(db.movies.join(db.lines).join(db.characters))
-        .where(db.movies.c.movie_id == movie_id)
-        .group_by(db.characters.c.character_id)
-        .order_by(desc("num_lines"))
-        .limit(5)
-    )
+    json = None
+    chars = []
 
     with db.engine.connect() as conn:
-        sol = conn.execute(query).fetchall()
-        if not sol:
-            raise HTTPException(422, "movie not found.")
-        chars = [
-            {"character_id": i.character_id, "character": i.name, "num_lines": i.num_lines}
-            for i in sol
-        ]
-        json = {
-            "movie_id": sol[0].movie_id,
-            "title": sol[0].title,
-            "top_characters": chars
-        }
+        sub_query = (
+            sqlalchemy.select(
+                db.movies.c.movie_id,
+                db.movies.c.title,
+            )
+            .where(db.movies.c.movie_id == movie_id)
+        )
+        sol = conn.execute(sub_query)
 
+        stmt = (
+        sqlalchemy.select(
+            db.characters.c.character_id, 
+            db.characters.c.name, 
+            func.count(db.lines.c.line_id).label("num_lines"),
+        )
+        .select_from(
+            db.characters.join(db.lines, db.characters.c.character_id == db.lines.c.character_id)
+        )
+        .where(db.characters.c.movie_id == movie_id)
+        .group_by(db.characters.c.character_id, db.characters.c.name)
+        .order_by(sqlalchemy.desc("num_lines"))
+        .limit(5)
+        )
+        res = conn.execute(stmt)
+        for i in res:
+            chars.append(
+                {
+                    "character_id": i.character_id,
+                    "character": i.name,
+                    "num_lines": i.num_lines,
+                }
+            )
+        for i in sol:
+            json = {
+                "movie_id": i.movie_id,
+                "title": i.title,
+                "top_characters": chars,
+            }
+
+    if json is None:
+        raise HTTPException(status_code=404, detail="movie not found.")
     return json
 
 class movie_sort_options(str, Enum):

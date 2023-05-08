@@ -24,6 +24,7 @@ class ConversationJson(BaseModel):
 
 router = APIRouter()
 
+@router.post("/movies/{movie_id}/conversations/", tags=["movies"])
 def add_conversation(movie_id: int, conversation: ConversationJson, db: Session):
     with db.engine.begin() as conn:
         vars = conn.execute(sqlalchemy.select(db.characters.c.character_id).where(db.characters.c.movie_id == movie_id)

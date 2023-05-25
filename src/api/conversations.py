@@ -5,7 +5,7 @@ from typing import List
 from datetime import datetime
 import sqlalchemy
 from sqlalchemy import *
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session 
 
 # FastAPI is inferring what the request body should look like
 # based on the following two classes.
